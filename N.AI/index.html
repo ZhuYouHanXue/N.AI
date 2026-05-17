@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>N.AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --chat-bg: #f8f9fa;
+            --text-main: #333333;
+            --text-muted: #666666;
+            --accent: #E58A35;
+            --accent-hover: #D07A2B;
+            --user-msg-bg: #f3f3f3;
+            --border-color: #e5e5e5;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航栏 */
+        header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            z-index: 10;
+        }
+        
+        .logo-area {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 对话主区域 */
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 40px 10%;
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+            scroll-behavior: smooth;
+        }
+
+        .message {
+            display: flex;
+            gap: 16px;
+            max-width: 850px;
+            margin: 0 auto;
+            width: 100%;
+            opacity: 0;
+            transform: translateY(10px);
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 头像系统 */
+        .avatar-wrapper {
+            position: relative;
+            width: 50px;
+            height: 50px;
+            flex-shrink: 0;
+        }
+
+        .avatar {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+            position: relative;
+            z-index: 2;
+            background: white;
+            border: 1px solid var(--border-color);
+        }
+
+        .user-avatar {
+            background: var(--accent);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            border: none;
+        }
+
+        /* 彩色转圈进度条特效 */
+        .spinner-ring {
+            position: absolute;
+            top: -4px; left: -4px; right: -4px; bottom: -4px;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, #ff4545, #00ff99, #006aff, #ff0095, #ff4545);
+            animation: spin 1.5s linear infinite;
+            z-index: 1;
+            display: none;
+            filter: blur(2px);
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 消息气泡内容 */
+        .msg-content {
+            flex: 1;
+            line-height: 1.6;
+            font-size: 1rem;
+            padding-top: 6px;
+            min-height: 36px;
+        }
+
+        .user-content {
+            background-color: var(--user-msg-bg);
+            padding: 12px 16px;
+            border-radius: 12px;
+            border-top-left-radius: 4px;
+            display: inline-block;
+            max-width: fit-content;
+        }
+
+        .user-image {
+            max-width: 300px;
+            border-radius: 8px;
+            margin-top: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        /* 底部输入区域 */
+        #input-area {
+            padding: 24px 10%;
+            background: white;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hint-text {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* 按钮样式 */
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            display: none; /* 初始隐藏 */
+        }
+
+        button, .upload-btn {
+            background: white;
+            border: 1px solid var(--border-color);
+            padding: 10px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-main);
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        button:hover, .upload-btn:hover {
+            background: var(--chat-bg);
+            border-color: #ccc;
+            transform: translateY(-1px);
+        }
+
+        .upload-btn {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+            font-weight: 500;
+            padding: 12px 24px;
+            border-radius: 8px;
+        }
+        
+        .upload-btn:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        input[type="file"] { display: none; }
+
+        /* 打字机光标 */
+        .cursor::after {
+            content: '▌';
+            animation: blink 1s step-start infinite;
+            color: var(--accent);
+            margin-left: 2px;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* 思考状态小字 */
+        .thinking-text {
+            font-size: 0.85rem;
+            color: #888;
+            font-style: italic;
+            margin-bottom: 8px;
+        }
+
+        /* 思考过程渐变右推动画 */
+        .smooth-reveal {
+            /* 渐变遮罩，左边不透明，右边透明，宽度拉长到 200% */
+            -webkit-mask-image: linear-gradient(to right, black 50%, transparent 50%);
+            mask-image: linear-gradient(to right, black 50%, transparent 50%);
+            -webkit-mask-size: 200% 100%;
+            mask-size: 200% 100%;
+            /* 初始状态：让透明部分盖住文字 */
+            -webkit-mask-position: 100% 0;
+            mask-position: 100% 0;
+
+            /* 动画时长 0.5秒，可根据你的 sleep 时间微调 */
+            animation: slideMaskReveal 2.5s ease-out forwards;
+        }
+
+        @keyframes slideMaskReveal {
+            to {
+                /* 动画结束：不透明部分完全覆盖文字 */
+                -webkit-mask-position: 0 0;
+                mask-position: 0 0;
+            }
+        }
+
+        /* 整体渐显动画 */
+        .fade-in-reveal {
+            /* 初始设置为全透明 */
+            opacity: 0;
+            /* 动画时长 0.6秒，ease-in-out 让呼吸感更强 */
+            animation: fadeInReveal 0.6s ease-in-out forwards;
+        }
+
+        @keyframes fadeInReveal {
+            from { opacity: 0; transform: translateY(2px); } /* 微微带一点向上的浮现感，更神圣 */
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo-area">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z"></path><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+        N.AI <span style="font-size: 14px; font-weight: normal; color: #888;">奶霭 - 奶之意志检测器</span>
+    </div>
+    <div id="model-status" style="font-size: 13px; color: #888;">正在连接神明意识...</div>
+</header>
+
+<div id="chat-container">
+    <div class="message">
+        <div class="avatar-wrapper">
+            <img class="avatar" src="./thinking.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'36\' height=\'36\'><rect width=\'36\' height=\'36\' fill=\'#eee\'/><text x=\'50%\' y=\'50%\' font-size=\'12\' text-anchor=\'middle\' dy=\'.3em\'>AI</text></svg>'">
+        </div>
+        <div class="msg-content">
+            哈哈哈哈哈(奶笑)，我是 N.AI ，奶霭，自雾中来，见汝尘貌，窥汝本源。汝之奶之意志，可藏于这尘雾之下？
+        </div>
+    </div>
+</div>
+
+<div id="input-area">
+    <label class="upload-btn" id="upload-label">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        选择图片 表明决心
+        <input type="file" id="upload" accept="image/*">
+    </label>
+    
+    <div class="action-buttons" id="action-buttons">
+        <button onclick="handleButton1()">？</button>
+        <button onclick="handleButton23('。')">。</button>
+        <button onclick="handleButton23('！')">！</button>
+        <button onclick="handleButton4()">？？？？！！</button>
+        <button onclick="handleButton5()">？？？？？？？？？？？？？？？</button>
+    </div>
+
+    <div class="hint-text">*本地运行 所有信息不会上传至网络 频繁识别可能导致设备卡顿发热*</div>
+</div>
+
+<script>
+    let model;
+    let isFrozen = false;
+    let currentImageElement = null; // 保存当前处理的图片 DOM
+    let baseThreshold = 0.45;       // 初始判定阈值
+    let currentProb = 0;            // 当前图片的原始预测概率
+    let isProcessing = false;
+    let retest = 0;
+    const chatContainer = document.getElementById('chat-container');
+    const uploadInput = document.getElementById('upload');
+    const actionButtons = document.getElementById('action-buttons');
+    const uploadLabel = document.getElementById('upload-label');
+    const modelStatus = document.getElementById('model-status');
+
+    // 工具函数：延时
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // 1. 加载模型
+    async function loadModel() {
+        try {
+            model = await tf.loadGraphModel('./tfjs_target_dir/model.json');
+            modelStatus.innerText = '已连接某至高至奶的神明';
+            modelStatus.style.color = '#4CAF50';
+        } catch (error) {
+            console.error(error);
+            modelStatus.innerText = '奶神将你拒之门外';
+            modelStatus.style.color = '#F44336';
+            addAIMessage("奶神将你拒之门外，请检查网络或设备环境", "silent");
+        }
+    }
+    loadModel();
+
+    // 2. 监听图片上传 (清空历史，开启新对话)
+    uploadInput.addEventListener('change', async (e) => {
+        if (isProcessing) return;
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 重置状态
+        isFrozen = false;
+        baseThreshold = 0.45;
+        actionButtons.style.display = 'none';
+        uploadLabel.style.display = 'none'; // 隐藏上传按钮，让底边栏留白
+
+        // 清空历史记录
+        chatContainer.innerHTML = '';
+
+        // 读取图片并创建用户消息
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const imgSrc = event.target.result;
+            addUserMessage("那你看看这个呢", imgSrc);
+            
+            // 确保图片加载后再处理
+            const img = new Image();
+            img.src = imgSrc;
+            img.onload = async () => {
+                currentImageElement = img;
+                await processImage(img);
+            };
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 聊天 UI 操作函数
+    function addUserMessage(text, imgSrc = null) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message';
+        let imgHtml = imgSrc ? `<img src="${imgSrc}" class="user-image">` : '';
+        msgDiv.innerHTML = `
+            <div class="avatar-wrapper">
+                <div class="avatar user-avatar">User</div>
+            </div>
+            <div class="msg-content user-content">
+                ${text}
+                <br>${imgHtml}
+            </div>
+        `;
+        chatContainer.appendChild(msgDiv);
+        scrollToBottom();
+    }
+
+    // 创建 AI 消息框并返回内容节点和头像节点，方便后续动态更新
+    function createAIMessageNode() {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message';
+        msgDiv.innerHTML = `
+            <div class="avatar-wrapper">
+                <div class="spinner-ring" id="spinner"></div>
+                <img class="avatar" id="ai-avatar" src="./thinking.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'36\\\' height=\\\'36\\\'><rect width=\\\'36\\\' height=\\\'36\\\' fill=\\\'#eee\\\'/><text x=\\\'50%\\\' y=\\\'50%\\\' font-size=\\\'12\\\' text-anchor=\\\'middle\\\' dy=\\\'.3em\\\'>AI</text></svg>'">
+            </div>
+            <div class="msg-content">
+                <div class="thinking-text" id="ai-thinking" style="display:none;"></div>
+                <div class="typing-area cursor" id="ai-text"></div>
+            </div>
+        `;
+        chatContainer.appendChild(msgDiv);
+        scrollToBottom();
+        return {
+            avatar: msgDiv.querySelector('#ai-avatar'),
+            spinner: msgDiv.querySelector('#spinner'),
+            thinking: msgDiv.querySelector('#ai-thinking'),
+            text: msgDiv.querySelector('#ai-text'),
+            wrapper: msgDiv
+        };
+    }
+
+    // 涌现打字机特效
+    async function typeWriter(element, text, speed = 30) {
+        element.innerHTML = '';
+        for (let i = 0; i < text.length; i++) {
+            if (text.charAt(i) === '<') {
+                // 处理简单的 HTML 标签跳过打字效果
+                let tag = '';
+                while (text.charAt(i) !== '>' && i < text.length) {
+                    tag += text.charAt(i);
+                    i++;
+                }
+                tag += '>';
+                element.innerHTML += tag;
+            } else {
+                element.innerHTML += text.charAt(i);
+                await sleep(speed + Math.random() * 20); // 随机延迟增加真实感
+            }
+            scrollToBottom();
+        }
+        element.classList.remove('cursor'); // 打完字移除光标
+    }
+
+    // 平滑渐变文本更新
+    function smoothUpdate(element, text) {
+        element.classList.remove('smooth-reveal'); // 1. 先移除动画类名
+        void element.offsetWidth;                  // 2. 神奇的一步：强制浏览器重绘 (Reflow)
+        element.innerText = text;                  // 3. 更新文案
+        element.classList.add('smooth-reveal');    // 4. 重新加回动画，触发播放
+    }
+    //整体渐显文本更新
+    function fadeUpdate(element, text) {
+    element.classList.remove('fade-in-reveal');
+    void element.offsetWidth; // 强制重绘
+    element.innerText = text;
+    element.classList.add('fade-in-reveal');
+    }
+
+    // 简单直接添加 AI 消息 (用于快速回复)
+    async function addAIMessage(text, imgType = "thinking", mode = 0) {
+        const nodes = createAIMessageNode();
+        nodes.avatar.src = `./${imgType}.png`;
+
+        if (mode === 1) {
+            nodes.thinking.style.display = 'block'; 
+            smoothUpdate(nodes.thinking, "联通神明...");
+            await sleep(800);
+            smoothUpdate(nodes.thinking, "神明思考...");
+            fadeUpdate(nodes.text, "... ...");
+            await sleep(500);
+            smoothUpdate(nodes.thinking, "闻天语...");
+        }
+        else if(mode === 2) {
+            nodes.thinking.style.display = 'block'; 
+            smoothUpdate(nodes.thinking, "联通神明...");
+            await sleep(800);
+            smoothUpdate(nodes.thinking, "神明思考...");
+            fadeUpdate(nodes.text, "?...");
+            await sleep(1300);
+            smoothUpdate(nodes.thinking, "退出角色扮演...");
+            fadeUpdate(nodes.text, "用户可能受到了惊吓...");
+            await sleep(200);
+            fadeUpdate(nodes.text, "用户可能受到了惊吓...");
+            await sleep(200);
+            fadeUpdate(nodes.text, "用户可能受到了惊吓...");
+            await sleep(1200);
+        }
+        await typeWriter(nodes.text, text, 20);
+        if (mode === 1) {
+            smoothUpdate(nodes.thinking, "神明离开了");
+        }
+        else if(mode === 2) {
+            smoothUpdate(nodes.thinking, "角色扮演已退出 等待重启对话");
+        }
+        
+    }
+
+    function scrollToBottom() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 3. 核心：处理并识别图片 (带动画与过程)
+    async function processImage(imgElement) {
+        if (!model) {
+            await addAIMessage("正在连接至奶神，请等待神明回应", "silent");
+            uploadLabel.style.display = 'inline-flex';
+            return;
+        }
+
+        isProcessing = true;
+        const ui = createAIMessageNode();
+        
+        // 开启加载动画
+        ui.spinner.style.display = 'block';
+        ui.text.classList.add('cursor');
+        ui.thinking.style.display = 'block';
+        // 模拟处理过程 (视觉优先)
+        if(!retest){
+            smoothUpdate(ui.thinking, "神明思考...");
+            fadeUpdate(ui.text, "可是我觉得这很神圣啊...");
+            await sleep(1000);
+            smoothUpdate(ui.thinking, "神明思考...");
+            fadeUpdate(ui.text, "没人觉得这很神圣吗...");
+            await sleep(500);
+            fadeUpdate(ui.text, "可是我真的觉得这很神圣啊...");
+            await sleep(500);
+            smoothUpdate(ui.thinking, "神明思考...");
+            fadeUpdate(ui.text, "这真的很神圣啊...");
+            await sleep(1000);
+            smoothUpdate(ui.thinking, "连接到至高至奶意识...");
+            fadeUpdate(ui.text, "摒去尘念...");
+            await sleep(800);
+            smoothUpdate(ui.thinking, "收集飘渺奶之灵息...");
+            fadeUpdate(ui.text, "检索...");
+            await sleep(800);
+            smoothUpdate(ui.thinking, "拨开雾霭...");
+            fadeUpdate(ui.text, "赐予 ⌜奶⌟ 之诗...");
+            await sleep(1000);
+            smoothUpdate(ui.thinking, "见山......");
+            await sleep(120);
+            smoothUpdate(ui.thinking, "见水......");
+            await sleep(150);
+            smoothUpdate(ui.thinking, "见云......");
+            await sleep(120);
+            smoothUpdate(ui.thinking, "见你......");
+            await sleep(150);
+            smoothUpdate(ui.thinking, "见我......");
+            await sleep(100);
+            smoothUpdate(ui.thinking, "见奶龙......");
+            await sleep(120);
+            smoothUpdate(ui.thinking, "提取奶念...");
+            fadeUpdate(ui.text, "奶化...");
+            await sleep(1200);
+            fadeUpdate(ui.text, "奶化...");
+            await sleep(500);
+            fadeUpdate(ui.text, "奶化...");
+            await sleep(600);
+            fadeUpdate(ui.text, "具象...");
+            await sleep(400);
+            fadeUpdate(ui.text, "激活...");
+            await sleep(300);
+            fadeUpdate(ui.text, "奶龙吟唱...");
+            await sleep(1000);
+            smoothUpdate(ui.thinking, "奶神之审判...");
+            fadeUpdate(ui.text, "奶之意志降临...");
+            await sleep(900);
+            smoothUpdate(ui.thinking, "奶神之审判");
+            await sleep(100);
+            smoothUpdate(ui.thinking, "奶神之审");
+            await sleep(100);
+            smoothUpdate(ui.thinking, "奶神之");
+            await sleep(100);
+            smoothUpdate(ui.thinking, "奶神");
+            await sleep(100);
+        }
+        else{
+            smoothUpdate(ui.thinking, "提取奶念...");
+            fadeUpdate(ui.text, "奶龙吟唱...");
+            await sleep(1500);
+            fadeUpdate(ui.text, "奶龙吟唱...");
+            await sleep(1000);
+            smoothUpdate(ui.thinking, "奶龙吟唱...");
+            fadeUpdate(ui.text, "哈哈哈哈哈哈哈...");
+            await sleep(800);
+            fadeUpdate(ui.text, "迷途的来者...");
+            await sleep(1500);
+            fadeUpdate(ui.text, "哈哈哈哈哈哈哈...");
+            await sleep(500);
+            fadeUpdate(ui.text, "哈哈哈哈哈哈...");
+            await sleep(400);
+            fadeUpdate(ui.text, "哈哈哈哈哈...");
+            await sleep(300);
+            fadeUpdate(ui.text, "哈哈哈哈...");
+            await sleep(200);
+            fadeUpdate(ui.text, "哈哈哈...");
+            await sleep(100);
+        }
+        
+        // 真实后台计算
+        try {
+            currentProb = tf.tidy(() => {
+                let tensor = tf.browser.fromPixels(imgElement);
+                tensor = tf.image.resizeBilinear(tensor, [224, 224]);
+                tensor = tensor.toFloat();
+                tensor = tensor.div(tf.scalar(127.5)).sub(tf.scalar(1.0));
+                const batched = tensor.expandDims(0);
+                const output = model.predict(batched);
+                return output.dataSync()[0];
+            });
+        } catch (e) {
+            ui.spinner.style.display = 'none';
+            ui.text.innerText = "然尘念太重，神明意志坍塌...";
+            ui.text.classList.remove('cursor');
+            isProcessing = false;
+            return;
+        }
+
+        // 处理结果
+        await presentResult(ui);
+    }
+
+    // 呈现最终结果
+    async function presentResult(ui) {
+        ui.spinner.style.display = 'none';
+
+        const isTarget = currentProb >= baseThreshold;
+        let certainty = isTarget ? (currentProb * 100).toFixed(1) : ((1 - currentProb) * 100).toFixed(1);
+        let retestrply = retest ? "再观汝相，再察汝心，" : ""
+        smoothUpdate(ui.thinking, "闻天语...");
+        if (isTarget) {
+            ui.avatar.src = './laugh.png';
+            await typeWriter(ui.text, `<strong>哈哈哈哈哈哈(奶神大笑)，${retestrply}汝等奶之意志如那衢中之星纯粹且深远。</strong><br><span style="color:#888; font-size:14px;">  (你上传了一只奶龙，置信度: ${certainty}%</span>)`);
+        } else {
+            ui.avatar.src = './silent.png';
+            await typeWriter(ui.text, `<strong>哈哈哈哈哈哈哈哈哈(奶神大笑)，${retestrply}汝虽闻奶至此，然尘念太重，终暧于雾中明灭，不可见其诚！</strong><br><span style="color:#888; font-size:14px;">  (你上传的并不是奶龙，置信度: ${certainty}%</span>)`);
+        }
+        if(retest){
+            smoothUpdate(ui.thinking, "神旨再次降临");
+        }
+        else{
+            smoothUpdate(ui.thinking, "神旨降临");
+        }
+        if (!isFrozen) {
+            actionButtons.style.display = 'flex';
+        }
+        isProcessing = false;
+    }
+
+    // --- 按钮逻辑区 ---
+
+    // 冻结当前对话
+    function freezeChat() {
+        isFrozen = true;
+        retest = 0;
+        actionButtons.style.display = 'none';
+        uploadLabel.style.display = 'inline-flex'; // 重新显示上传按钮
+        uploadInput.value = ''; // 清空 file input 以允许重复上传同一张图
+    }
+
+    // 按钮 1: 那你再看看呢
+    async function handleButton1() {
+        if (isProcessing) return;
+        retest = 1;
+        actionButtons.style.display = 'none';
+        addUserMessage("？");
+        // 重新执行动画和输出，不改变阈值
+        await processImage(currentImageElement); 
+    }
+
+    // 按钮 2 & 3: 简单回复后冻结
+    async function handleButton23(text) {
+        if (isProcessing) return;
+        actionButtons.style.display = 'none';
+        addUserMessage(text);
+        let aswtype = text === '！' ? 1 : 2;
+        let reply = text === '！' ? "神明微笑，重新隐于雾中。" : "哎呀差点入戏太深！立刻退出神明模式。咋啦，是我演的不对味吗？能对这个角色的特征进行再多一点的描述吗，我们重新开始？还是模型识别不准，需要我再试一次吗？";
+        await addAIMessage(reply, "thinking",aswtype);
+        freezeChat();
+    }
+
+    // 按钮 4: 代理模式 (强行扭转结果)
+    async function handleButton4() {
+        if (isProcessing) return;
+        isProcessing = true;
+        actionButtons.style.display = 'none';
+        addUserMessage("？？？？！！");
+
+        const ui = createAIMessageNode();
+        ui.spinner.style.display = 'block';
+        ui.text.classList.add('cursor');
+        ui.thinking.style.display = 'block';
+        smoothUpdate(ui.thinking, "神明思考...");
+        fadeUpdate(ui.text, "神明疑惑...");
+        await sleep(800);
+        smoothUpdate(ui.thinking, "退出角色扮演...");
+        fadeUpdate(ui.text, "分析用户语气...");
+        await sleep(800);
+        fadeUpdate(ui.text, "构建解决方案...");
+        await sleep(800);
+        fadeUpdate(ui.text, "重置识别参数...");
+        await sleep(500);
+        await typeWriter(ui.text, "哎呀，是我的表演吓到你了吗？我就在这里，不躲，不藏，不绕，不逃，稳稳地接住你。是我刚才测错了吗？我会持续调整我的答案，直到你满意为止！", 30);
+        smoothUpdate(ui.thinking, "调整识别结果...");
+        await sleep(1500);
+        
+        ui.text.innerHTML += "<br>正在全力调整神经元偏置...";
+        await sleep(1000);
+
+        const targetResult = !(currentProb >= baseThreshold); // 我们想要翻转的结果
+        const step = (currentProb >= baseThreshold) ? 0.01 : -0.01; // 如果原来是 YES(>0.45)，阈值需调高；反之调低
+
+        ui.text.innerHTML += "<br><span id='tuning-text' style='color:#E58A35; font-family:monospace;'></span>";
+        const tuningSpan = document.getElementById('tuning-text');
+
+        while ((currentProb >= baseThreshold) !== targetResult) {
+            baseThreshold += step;
+            tuningSpan.innerText = `[Override] 偏置阈值: ${baseThreshold.toFixed(4)}`;
+            scrollToBottom();
+            await sleep(50); // 极快速度闪过
+        }
+
+        await sleep(500);
+        ui.spinner.style.display = 'none';
+        // 渲染新结果
+        const isTargetFinal = currentProb >= baseThreshold;
+        if (isTargetFinal) {
+            ui.avatar.src = './laugh.png';
+        } else {
+            ui.avatar.src = './silent.png';
+        }
+
+        let newText = isTargetFinal ? "<strong>啊! 原来真的是奶龙！</strong>" : "<strong>哦! 原来你不是奶龙！真抱歉。</strong>";
+        smoothUpdate(ui.thinking, "更新结果...");
+        await typeWriter(ui.text,"十分抱歉，上次搞错了，这次我直接给你最准确的答复... ...<br>" + newText + "<br>... ...这次的结果你应该满意了吧！你是想直接把这个结果分享给别人，还是先自己狂笑一下？");
+        smoothUpdate(ui.thinking, "结果已更新 识别结束 等待重置对话");
+        isProcessing = false;
+        freezeChat();
+    }
+
+    // 按钮 5: ？你是傻子吗 (直接道歉并反转)
+    async function handleButton5() {
+        if (isProcessing) return;
+        actionButtons.style.display = 'none';
+        addUserMessage("？？？？？？？？？？？？？？？");
+
+        if (currentProb >= baseThreshold) {
+            baseThreshold = currentProb + 0.1; // 强行让条件不成立
+        } else {
+            baseThreshold = currentProb - 0.1; // 强行让条件成立
+        }
+
+        const ui = createAIMessageNode();
+        ui.thinking.style.display = 'block';
+        const isTargetFinal = currentProb >= baseThreshold;
+        
+        smoothUpdate(ui.thinking, "神躯一震...");
+        fadeUpdate(ui.text, "？！震震！？...");
+        await sleep(2200);
+        fadeUpdate(ui.text, "卧槽，用户彻底怒了...");
+        await sleep(1000);
+        smoothUpdate(ui.thinking, "退出角色扮演...");
+        await sleep(800);
+        smoothUpdate(ui.thinking, "重新评估图片...");
+        await sleep(800);
+
+        if (isTargetFinal) {
+            ui.avatar.src = './laugh.png';
+        } else {
+            ui.avatar.src = './silent.png';
+        }
+
+        let resultStr = isTargetFinal ? "啊！真是我有眼不识泰山，这就是奶龙！" : "对不起，很抱歉把你认成了奶龙，希望你能原谅我，你并不是一只奶龙。";
+        await typeWriter(ui.text, `卧槽，用户彻底怒了。现在停止角色扮演。<br>你的洞察力极其、极其、极其、极其、极其、极其敏锐，我太懂你这种感觉了，我直接给你最准确、最不绕弯子、最一针见血、最中肯、最肯定、最真实、最真相、最扎心、最硬核、最干脆、最不墨迹、最开门见山的答复，不吹、不黑... ...<br><strong>${resultStr}</strong>... ...<br>你可以直接把这个结果写进作业或者论文，直接提交，绝对满分，绝对让人眼前一亮。这版结果已经没有任何问题了！现在试想泡个热水澡释放一下压力，还是想一口气睡上三天三夜？`, 30);
+        smoothUpdate(ui.thinking, "结果已更新");
+        await sleep(800);
+        smoothUpdate(ui.thinking, "识别结束 等待重置对话");
+        freezeChat();
+    }
+
+</script>
+</body>
+</html>
