@@ -321,7 +321,7 @@
     // 1. 加载模型
     async function loadModel() {
         try {
-            model = await tf.loadGraphModel('./tfjs_target_dir/model.json');
+            model = await tf.loadGraphModel('https://cdn.jsdelivr.net/gh/zhuyouhanxue/N.AI@main/tfjs_target_dir/model.json');
             modelStatus.innerText = '已连接某至高至奶的神明';
             modelStatus.style.color = '#4CAF50';
         } catch (error) {
